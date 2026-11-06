@@ -72,13 +72,13 @@ for lproj in *.lproj; do
 
     if [ -n "$MISSING" ]; then
         echo "   ❌ Missing keys:"
-        echo "$MISSING" | sed 's/^/      /'
+        while IFS= read -r line; do echo "      $line"; done <<< "$MISSING"
         ERRORS_FOUND=$((ERRORS_FOUND + 1))
     fi
 
     if [ -n "$EXTRA" ]; then
         echo "   ⚠️  Extra keys (not in base):"
-        echo "$EXTRA" | sed 's/^/      /'
+        while IFS= read -r line; do echo "      $line"; done <<< "$EXTRA"
         ERRORS_FOUND=$((ERRORS_FOUND + 1))
     fi
 
