@@ -13,6 +13,9 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   update-cask:
     runs-on: ubuntu-latest
@@ -60,8 +63,9 @@ jobs:
           echo "SHA256: ${SHA256}"
 
       - name: Checkout homebrew-claude-usage tap
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: true  # нужен для git push ниже
           repository: hamed-elfayome/homebrew-claude-usage
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: homebrew-tap
@@ -77,16 +81,16 @@ jobs:
           fi
 
           # Update the cask file with new version and SHA256
-          sed -i "s/version \".*\"/version \"${{ steps.version.outputs.version }}\"/" Casks/claude-usage-tracker.rb
-          sed -i "s/sha256 \".*\"/sha256 \"${{ steps.sha256.outputs.sha256 }}\"/" Casks/claude-usage-tracker.rb
+          sed -i "s/version \".*\"/version \"${STEPS_VERSION_OUTPUTS_VERSION}\"/" Casks/claude-usage-tracker.rb
+          sed -i "s/sha256 \".*\"/sha256 \"${STEPS_SHA256_OUTPUTS_SHA256}\"/" Casks/claude-usage-tracker.rb
 
           # Verify changes were made
-          if ! grep -q "version \"${{ steps.version.outputs.version }}\"" Casks/claude-usage-tracker.rb; then
+          if ! grep -q "version \"${STEPS_VERSION_OUTPUTS_VERSION}\"" Casks/claude-usage-tracker.rb; then
             echo "Error: Version update failed"
             exit 1
           fi
 
-          if ! grep -q "sha256 \"${{ steps.sha256.outputs.sha256 }}\"" Casks/claude-usage-tracker.rb; then
+          if ! grep -q "sha256 \"${STEPS_SHA256_OUTPUTS_SHA256}\"" Casks/claude-usage-tracker.rb; then
             echo "Error: SHA256 update failed"
             exit 1
           fi
@@ -94,6 +98,9 @@ jobs:
           # Show the changes
           echo "Updated cask file:"
           cat Casks/claude-usage-tracker.rb
+        env:
+          STEPS_VERSION_OUTPUTS_VERSION: ${{ steps.version.outputs.version }}
+          STEPS_SHA256_OUTPUTS_SHA256: ${{ steps.sha256.outputs.sha256 }}
 
       - name: Commit and push changes
         run: |
@@ -103,12 +110,16 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           git add Casks/claude-usage-tracker.rb
-          git commit -m "Update claude-usage-tracker to version ${{ steps.version.outputs.version }}"
+          git commit -m "Update claude-usage-tracker to version ${STEPS_VERSION_OUTPUTS_VERSION}"
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          STEPS_VERSION_OUTPUTS_VERSION: ${{ steps.version.outputs.version }}
 
       - name: Summary
         run: |
-          echo "Successfully updated Homebrew cask to version ${{ steps.version.outputs.version }}"
-          echo "SHA256: ${{ steps.sha256.outputs.sha256 }}"
+          echo "Successfully updated Homebrew cask to version ${STEPS_VERSION_OUTPUTS_VERSION}"
+          echo "SHA256: ${STEPS_SHA256_OUTPUTS_SHA256}"
+        env:
+          STEPS_VERSION_OUTPUTS_VERSION: ${{ steps.version.outputs.version }}
+          STEPS_SHA256_OUTPUTS_SHA256: ${{ steps.sha256.outputs.sha256 }}

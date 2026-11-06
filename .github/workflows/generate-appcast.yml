@@ -10,6 +10,9 @@ on:
         required: false
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   generate-appcast:
     runs-on: macos-latest
@@ -20,24 +23,27 @@ jobs:
         id: release_tag
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [ -n "${{ inputs.release_tag }}" ]; then
-              TAG="${{ inputs.release_tag }}"
+            if [ -n "${INPUTS_RELEASE_TAG}" ]; then
+              TAG="${INPUTS_RELEASE_TAG}"
             else
               # Get latest release tag
               TAG=$(gh api repos/${{ github.repository }}/releases/latest --jq '.tag_name')
             fi
           else
-            TAG="${{ github.event.release.tag_name }}"
+            TAG="${GITHUB_EVENT_RELEASE_TAG_NAME}"
           fi
 
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
           echo "Processing release: ${TAG}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUTS_RELEASE_TAG: ${{ inputs.release_tag }}
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
 
       - name: Checkout gh-pages
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: true  # нужен для git push ниже
           ref: gh-pages
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
@@ -60,13 +66,14 @@ jobs:
       - name: Download Release Asset
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STEPS_RELEASE_TAG_OUTPUTS_TAG: ${{ steps.release_tag.outputs.tag }}
         run: |
           # Create releases directory if it doesn't exist
           mkdir -p releases
 
           # Download the release asset
-          echo "Downloading release: ${{ steps.release_tag.outputs.tag }}"
-          gh release download "${{ steps.release_tag.outputs.tag }}" \
+          echo "Downloading release: ${STEPS_RELEASE_TAG_OUTPUTS_TAG}"
+          gh release download "${STEPS_RELEASE_TAG_OUTPUTS_TAG}" \
             -p "Claude-Usage.zip" \
             -D releases/ \
             --clobber
@@ -114,12 +121,13 @@ jobs:
       - name: Download Previous Releases for Delta Updates
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STEPS_RELEASE_TAG_OUTPUTS_TAG: ${{ steps.release_tag.outputs.tag }}
         continue-on-error: true
         run: |
           echo "Downloading previous releases for delta update generation..."
 
           # Get list of recent releases (last 5 for delta generation)
-          RELEASES=$(gh api repos/${{ github.repository }}/releases --jq '.[0:5] | .[] | .tag_name' | grep -v "${{ steps.release_tag.outputs.tag }}" || true)
+          RELEASES=$(gh api repos/${{ github.repository }}/releases --jq '.[0:5] | .[] | .tag_name' | grep -v "${STEPS_RELEASE_TAG_OUTPUTS_TAG}" || true)
 
           if [ -z "$RELEASES" ]; then
             echo "No previous releases found. Skipping delta generation."
@@ -135,7 +143,7 @@ jobs:
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
-          echo "Generating appcast for version ${{ env.APP_VERSION }}..."
+          echo "Generating appcast for version ${APP_VERSION}..."
 
           # IMPORTANT: Pipe private key via stdin for security (don't write to disk)
           # This prevents the private key from ever being written to the filesystem
@@ -165,8 +173,10 @@ jobs:
           fi
 
           echo ""
-          echo "Latest version in appcast: ${{ env.APP_VERSION }}"
-          echo "Release tag: ${{ steps.release_tag.outputs.tag }}"
+          echo "Latest version in appcast: ${APP_VERSION}"
+          echo "Release tag: ${STEPS_RELEASE_TAG_OUTPUTS_TAG}"
+        env:
+          STEPS_RELEASE_TAG_OUTPUTS_TAG: ${{ steps.release_tag.outputs.tag }}
 
       - name: Commit and Push
         run: |
@@ -182,10 +192,12 @@ jobs:
           fi
 
           # Commit and push
-          git commit -m "Update appcast for ${{ steps.release_tag.outputs.tag }} (v${{ env.APP_VERSION }})"
+          git commit -m "Update appcast for ${STEPS_RELEASE_TAG_OUTPUTS_TAG} (v${APP_VERSION})"
           git push
 
           echo "✅ Appcast published to GitHub Pages!"
+        env:
+          STEPS_RELEASE_TAG_OUTPUTS_TAG: ${{ steps.release_tag.outputs.tag }}
 
       - name: Verify GitHub Pages Deployment
         run: |
@@ -206,8 +218,10 @@ jobs:
         run: |
           echo "🎉 Appcast generation complete!"
           echo ""
-          echo "📦 Release: ${{ steps.release_tag.outputs.tag }}"
-          echo "📱 Version: ${{ env.APP_VERSION }}"
+          echo "📦 Release: ${STEPS_RELEASE_TAG_OUTPUTS_TAG}"
+          echo "📱 Version: ${APP_VERSION}"
           echo "🔗 Appcast URL: https://hamed-elfayome.github.io/Claude-Usage-Tracker/appcast.xml"
           echo ""
           echo "ℹ️  Users with automatic updates enabled will be notified within 24 hours"
+        env:
+          STEPS_RELEASE_TAG_OUTPUTS_TAG: ${{ steps.release_tag.outputs.tag }}
